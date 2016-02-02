@@ -28,11 +28,7 @@
 
 package com.twelvemonkeys.contrib.tiff;
 
-import com.twelvemonkeys.imageio.metadata.AbstractDirectory;
-import com.twelvemonkeys.imageio.metadata.AbstractEntry;
-import com.twelvemonkeys.imageio.metadata.CompoundDirectory;
-import com.twelvemonkeys.imageio.metadata.Directory;
-import com.twelvemonkeys.imageio.metadata.Entry;
+import com.twelvemonkeys.imageio.metadata.*;
 import com.twelvemonkeys.imageio.metadata.exif.EXIFReader;
 import com.twelvemonkeys.imageio.metadata.exif.EXIFWriter;
 import com.twelvemonkeys.imageio.metadata.exif.Rational;
@@ -42,6 +38,7 @@ import com.twelvemonkeys.lang.Validate;
 import javax.imageio.ImageIO;
 import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.ImageOutputStream;
+import java.awt.*;
 import java.awt.geom.AffineTransform;
 import java.awt.image.AffineTransformOp;
 import java.awt.image.BufferedImage;
@@ -306,7 +303,11 @@ public class TIFFUtilities {
         AffineTransform transform = AffineTransform.getTranslateInstance((newW - w) / 2.0, (newH - h) / 2.0);
         transform.concatenate(orientationTransform);
         AffineTransformOp transformOp = new AffineTransformOp(transform, null);
-        return transformOp.filter(input, null);
+        BufferedImage dest = transformOp.createCompatibleDestImage( input, input.getColorModel() );
+        Graphics2D g2d = dest.createGraphics();
+        g2d.drawImage( input, transform, null );
+        g2d.dispose();
+        return dest;
     }
 
     public static class TIFFPage {
