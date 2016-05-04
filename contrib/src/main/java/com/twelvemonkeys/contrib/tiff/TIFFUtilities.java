@@ -39,6 +39,7 @@ import javax.imageio.IIOException;
 import javax.imageio.ImageIO;
 import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.ImageOutputStream;
+import java.awt.*;
 import java.awt.geom.AffineTransform;
 import java.awt.image.AffineTransformOp;
 import java.awt.image.BufferedImage;
@@ -304,7 +305,11 @@ public class TIFFUtilities {
         AffineTransform transform = AffineTransform.getTranslateInstance((newW - w) / 2.0, (newH - h) / 2.0);
         transform.concatenate(orientationTransform);
         AffineTransformOp transformOp = new AffineTransformOp(transform, null);
-        return transformOp.filter(input, null);
+        BufferedImage dest = transformOp.createCompatibleDestImage( input, input.getColorModel() );
+        Graphics2D g2d = dest.createGraphics();
+        g2d.drawImage( input, transform, null );
+        g2d.dispose();
+        return dest;
     }
 
     public static class TIFFPage {
