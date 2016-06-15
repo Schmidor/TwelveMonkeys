@@ -28,12 +28,16 @@
 
 package com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.boxes;
 
-import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.JPCStream;
+import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.JPCInputStream;
 import com.twelvemonkeys.imageio.stream.SubImageInputStream;
 
 import javax.imageio.stream.ImageInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Start of tile-part codestream box.
@@ -62,7 +66,6 @@ public class SOTBox extends JPCBox {
      * Number of tileparts or 0 if not specified in this part
      */
     private int tnsot;
-
     /**
      * Tile index
      */
@@ -95,12 +98,23 @@ public class SOTBox extends JPCBox {
         return tilePartData;
     }
 
+    public List<JPCBox> getBoxes(){
+        return boxes;
+    }
+
+
+    private CODBox cod;
+    private Map<Integer, COCBox> coc;
+
+
     /**
      * Tile part data
      */
     private ByteArrayOutputStream tilePartData;
 
-    public SOTBox(short type, int dataLength, ImageInputStream stream) throws IOException {
+    private ArrayList<JPCBox> boxes = new ArrayList<>();
+
+    public SOTBox(short type, int dataLength, ImageInputStream stream, short Csiz) throws IOException {
         super(type, dataLength);
 
         isot = stream.readUnsignedShort();
@@ -117,17 +131,17 @@ public class SOTBox extends JPCBox {
             subStream = new SubImageInputStream(stream, psot - 12);
         }
 
-        if (JPCStream.DEBUG) {
+        if (JPCInputStream.DEBUG) {
             System.out.println(
                     "SOTBox [isot=" + isot + ", psot=" + psot + ", tpsot=" + tpsot + ", tnsot=" + tnsot + "]");
         }
 
-        readFully(subStream);
+        readFully(subStream,Csiz);
     }
 
-    private void readFully(ImageInputStream subStream) throws IOException {
+    private void readFully(ImageInputStream subStream, short Csiz) throws IOException {
         while (subStream.getStreamPosition() < subStream.length()) {
-            JPCBox box = readNextBox(subStream);
+            JPCBox box = readNextBox(subStream, Csiz);
             if (box instanceof SODMarker) {
                 subStream.mark();
                 subStream.seek(subStream.length() - 2);
@@ -143,11 +157,32 @@ public class SOTBox extends JPCBox {
                     int r = subStream.read(buffer);
                     tilePartData.write(buffer, 0, r);
                 }
-                if (JPCStream.DEBUG) {
-                    System.out.println("SOTBox [BITSTREAM length="
+                if (JPCInputStream.DEBUG) {
+                    System.out.println("/SOTBox [BITSTREAM length="
                             + (tilePartData.size()) + "]");
                 }
+            } else if(box instanceof CODBox){
+                cod = (CODBox) box;
+            } else if(box instanceof COCBox){
+                if(coc == null) coc = new HashMap<>();
+
+                coc.put(((COCBox) box).getCcoc(), (COCBox) box);
             }
+
+
+            boxes.add(box);
         }
+    }
+
+    public CODBox getCod() {
+        return cod;
+    }
+
+    public void setCod(CODBox cod) {
+        this.cod = cod;
+    }
+
+    public COCBox getCOC(int c) {
+        return coc.get(c);
     }
 }

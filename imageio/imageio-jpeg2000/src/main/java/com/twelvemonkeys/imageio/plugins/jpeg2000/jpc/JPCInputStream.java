@@ -42,7 +42,7 @@ import java.util.HashMap;
  * @author last modified by $Author$
  * @version $Id$
  */
-public class JPCStream extends InputStream {
+public class JPCInputStream extends InputStream {
 
     public final static boolean DEBUG = "true"
             .equalsIgnoreCase(System.getProperty("com.twelvemonkeys.imageio.plugins.jpeg2000.debug"));
@@ -57,7 +57,7 @@ public class JPCStream extends InputStream {
         return new byte[] {(byte) 0xFF, 0x4F};
     }
 
-    public JPCStream(ImageInputStream input) {
+    public JPCInputStream(ImageInputStream input) {
         this.inputStream = input;
     }
 
@@ -77,7 +77,7 @@ public class JPCStream extends InputStream {
                 break;
             }
 
-            JPCBox box = JPCBox.readNextBox(inputStream);
+            JPCBox box = JPCBox.readNextBox(inputStream, sizBox != null? sizBox.getCsiz() : -1);
 
             if (box instanceof SOTBox) {
                 SOTBox tilePart = (SOTBox) box;
@@ -98,6 +98,12 @@ public class JPCStream extends InputStream {
             else if (box instanceof SIZBox) {
                 this.sizBox = (SIZBox) box;
             }
+            else {
+                if(DEBUG){
+                    System.out.println("box not used: " + box);
+                }
+            }
+            // TODO: Globale COD und COC Boxen speichern
         }
     }
 

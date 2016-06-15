@@ -29,7 +29,7 @@
 package com.twelvemonkeys.imageio.plugins.jpeg2000;
 
 import com.twelvemonkeys.imageio.plugins.jpeg2000.jp2.JP2Stream;
-import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.JPCStream;
+import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.JPCInputStream;
 import com.twelvemonkeys.imageio.spi.ImageReaderSpiBase;
 
 import javax.imageio.stream.ImageInputStream;
@@ -80,7 +80,7 @@ public final class JPEG2000ImageReaderSpi extends ImageReaderSpiBase {
             }
 
             // JPEG 2000 codestream
-            byte[] jpcMagic = JPCStream.getMagic();
+            byte[] jpcMagic = JPCInputStream.getMagic();
             for (int i = 0; i < jpcMagic.length; i++) {
                 if (jpcMagic[i] != magic[i]) {
                     foundMagic = false;

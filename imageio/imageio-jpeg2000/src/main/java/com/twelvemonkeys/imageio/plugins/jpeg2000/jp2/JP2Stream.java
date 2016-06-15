@@ -29,7 +29,7 @@
 package com.twelvemonkeys.imageio.plugins.jpeg2000.jp2;
 
 import com.twelvemonkeys.imageio.plugins.jpeg2000.jp2.boxes.*;
-import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.JPCStream;
+import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.JPCInputStream;
 
 import javax.imageio.stream.ImageInputStream;
 import java.io.IOException;
@@ -54,7 +54,7 @@ public class JP2Stream extends InputStream {
 
     private ImageInputStream inputStream;
 
-    private JPCStream codeStream;
+    private JPCInputStream codeStream;
 
     public static byte[] getMagic() {
         return new byte[] {0x00, 0x00, 0x00, 0x0C, 0x6A, 0x50, 0x20, 0x20};
@@ -80,7 +80,7 @@ public class JP2Stream extends InputStream {
     public int read() throws IOException {
         if (codeStream == null) {
             readToCodestream();
-            codeStream = new JPCStream(codestreamBox.getContentStream());
+            codeStream = new JPCInputStream(codestreamBox.getContentStream());
             // TODO: validate image size, component count, ...
         }
         return codeStream.read();

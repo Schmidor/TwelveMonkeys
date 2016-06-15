@@ -28,7 +28,7 @@
 
 package com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.boxes;
 
-import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.JPCStream;
+import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.JPCInputStream;
 
 /**
  * Marker for the start of the datastream of a tile-part.
@@ -41,7 +41,7 @@ public class SODMarker extends JPCBox {
 
     public SODMarker(short type, int dataLength) {
         super(type, dataLength);
-        if (JPCStream.DEBUG) {
+        if (JPCInputStream.DEBUG) {
             System.out.println("SODMarker");
         }
     }

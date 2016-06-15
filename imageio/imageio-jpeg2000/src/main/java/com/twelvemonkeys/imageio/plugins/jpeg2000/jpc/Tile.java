@@ -28,6 +28,7 @@
 
 package com.twelvemonkeys.imageio.plugins.jpeg2000.jpc;
 
+import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.boxes.JPCBox;
 import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.boxes.SOTBox;
 
 import java.io.IOException;
@@ -55,8 +56,19 @@ public class Tile {
         return parts;
     }
 
-    public void getCodingStyle(/* per component */) {
-        // TODO: first Tile-part COC > first Tile-part COD > Main COC > Main COD
+    /**
+     * Coding-Style for tile.
+     * <code>first Tile-part COC > first Tile-part COD > Main COC > Main COD</code>
+     *
+     * @param component
+     * @return COC or COD box, if tile has one.
+     */
+    public JPCBox getTileCodingStyle(int component) {
+        JPCBox box = parts[0].getCOC(component);
+        if (box != null) {
+            return box;
+        }
+        return parts[0].getCod();
     }
 
     public void getQuantization(/* per component */) {

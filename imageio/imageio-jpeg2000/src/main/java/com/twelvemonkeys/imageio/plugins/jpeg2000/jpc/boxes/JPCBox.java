@@ -28,7 +28,7 @@
 
 package com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.boxes;
 
-import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.JPCStream;
+import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.JPCInputStream;
 
 import javax.imageio.stream.ImageInputStream;
 import java.io.IOException;
@@ -53,10 +53,11 @@ public class JPCBox {
      * Reads a codestream box or marker from the input stream.
      *
      * @param input
+     * @param Csiz Csiz if SIZBox is read or -1
      * @return
      * @throws IOException
      */
-    public static JPCBox readNextBox(ImageInputStream input) throws IOException {
+    public static JPCBox readNextBox(ImageInputStream input, short Csiz) throws IOException {
         short type = input.readShort();
 
         switch (type) {
@@ -71,17 +72,19 @@ public class JPCBox {
         int paramLength = input.readUnsignedShort() - 2;
         switch (type) {
             case JPCBoxes.SOT:
-                return new SOTBox(type, paramLength, input);
-
+                return new SOTBox(type, paramLength, input, Csiz);
             case JPCBoxes.SIZ:
                 return new SIZBox(type, paramLength, input);
             case JPCBoxes.COD:
+                return new CODBox(type, paramLength, input);
             case JPCBoxes.QCD:
+                return new QCDBox(type, paramLength, input);
             case JPCBoxes.COM:
-
+                return new COMBox(type, paramLength, input);
             case JPCBoxes.COC:
+                return new COCBox(type, paramLength, input, Csiz);
             case JPCBoxes.QCC:
-
+                return new QCCBox(type, paramLength, input, Csiz);
             case JPCBoxes.RGN:
             case JPCBoxes.POC:
 
@@ -94,12 +97,45 @@ public class JPCBox {
             case JPCBoxes.EPH:
             case JPCBoxes.CRG:
             default:
-                if (JPCStream.DEBUG) {
+                if (JPCInputStream.DEBUG) {
                     System.out.println("JPEG2000CodeStream.readNextBox: unknown type " + Integer.toHexString(type & 0xffff)
                             + " length=" + paramLength);
                 }
                 input.skipBytes(paramLength);
                 return null;
+    }
+    }
+
+    public static class QCDBox extends JPCBox{
+        public QCDBox(short type, int dataLength, ImageInputStream stream) throws IOException {
+            super(type, dataLength);
+
+            sqcd = stream.readByte();
+
+            spgcd = new byte[dataLength - 1];
+            stream.readFully(spgcd);
+
+            if (JPCInputStream.DEBUG) {
+                System.out.println("QCDBox []");
+
+            }
+        }
+    }
+
+    public static class QCCBox extends JPCBox{
+        public QCCBox(short type, int dataLength, ImageInputStream stream, int Csiz) throws IOException {
+            super(type, dataLength);
+
+            cqoc = (Csiz < 257)? stream.readUnsignedByte() : stream.readUnsignedShort();
+            sqcc = stream.readByte();
+
+            spqcc = new byte[dataLength - ((Csiz < 257)? 2 : 3)];
+            stream.readFully(spqcc);
+
+            if (JPCInputStream.DEBUG) {
+                System.out.println("QCCBox []");
+
+            }
         }
     }
 }

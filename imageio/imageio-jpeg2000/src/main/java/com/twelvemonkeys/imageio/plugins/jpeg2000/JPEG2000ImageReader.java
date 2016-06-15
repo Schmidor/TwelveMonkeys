@@ -30,7 +30,7 @@ package com.twelvemonkeys.imageio.plugins.jpeg2000;
 
 import com.twelvemonkeys.imageio.ImageReaderBase;
 import com.twelvemonkeys.imageio.plugins.jpeg2000.jp2.JP2Stream;
-import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.JPCStream;
+import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.JPCInputStream;
 
 import javax.imageio.ImageReadParam;
 import javax.imageio.ImageTypeSpecifier;
@@ -65,8 +65,8 @@ public class JPEG2000ImageReader extends ImageReaderBase {
         if (readerStream instanceof JP2Stream) {
             return ((JP2Stream) readerStream).getHeight(imageIndex);
         }
-        else if (readerStream instanceof JPCStream) {
-            return ((JPCStream) readerStream).getHeight(imageIndex);
+        else if (readerStream instanceof JPCInputStream) {
+            return ((JPCInputStream) readerStream).getHeight(imageIndex);
         }
         else {
             return 0;
@@ -85,8 +85,8 @@ public class JPEG2000ImageReader extends ImageReaderBase {
         if (readerStream instanceof JP2Stream) {
             return ((JP2Stream) readerStream).getWidth(imageIndex);
         }
-        else if (readerStream instanceof JPCStream) {
-            return ((JPCStream) readerStream).getWidth(imageIndex);
+        else if (readerStream instanceof JPCInputStream) {
+            return ((JPCInputStream) readerStream).getWidth(imageIndex);
         }
         else {
             return 0;
@@ -133,7 +133,7 @@ public class JPEG2000ImageReader extends ImageReaderBase {
                 }
 
                 // JPEG 2000 codestream
-                byte[] jpcMagic = JPCStream.getMagic();
+                byte[] jpcMagic = JPCInputStream.getMagic();
                 for (int i = 0; i < jpcMagic.length; i++) {
                     if (jpcMagic[i] != magic[i]) {
                         foundMagic = false;
@@ -141,7 +141,7 @@ public class JPEG2000ImageReader extends ImageReaderBase {
                 }
 
                 if (foundMagic) {
-                    readerStream = new JPCStream(imageInput);
+                    readerStream = new JPCInputStream(imageInput);
                     return;
                 }
                 else {

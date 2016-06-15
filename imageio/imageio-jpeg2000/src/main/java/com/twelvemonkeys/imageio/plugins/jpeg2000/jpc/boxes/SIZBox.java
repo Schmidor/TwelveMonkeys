@@ -29,7 +29,7 @@
 package com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.boxes;
 
 import com.twelvemonkeys.imageio.plugins.jpeg2000.jp2.boxes.JP2Box;
-import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.JPCStream;
+import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.JPCInputStream;
 
 import javax.imageio.stream.ImageInputStream;
 import java.io.IOException;
@@ -182,7 +182,7 @@ public class SIZBox extends JPCBox {
         xrsiz = new int[csiz];
         yrsiz = new int[csiz];
 
-        if (JPCStream.DEBUG) {
+        if (JPCInputStream.DEBUG) {
             System.out.print("SIZBox [rsiz=" + rsiz + ", xsiz=" + xsiz + ", ysiz=" + ysiz + ", xosiz=" + xosiz
                     + ", yosiz=" + yosiz + ", xtsiz=" + xtsiz + ", ytsiz=" + ytsiz + ", xtosiz=" + xtosiz
                     + ", ytosiz=" + ytosiz + ", csiz=" + csiz + "] (");
@@ -194,11 +194,11 @@ public class SIZBox extends JPCBox {
             xrsiz[i] = stream.readUnsignedByte();
             yrsiz[i] = stream.readUnsignedByte();
 
-            if (JPCStream.DEBUG) {
+            if (JPCInputStream.DEBUG) {
                 System.out.print(JP2Box.bpcAsString(ssiz[i]) + " xrsiz=" + xrsiz[i] + " yrsiz=" + yrsiz[i] + ", ");
             }
         }
-        if (JPCStream.DEBUG) {
+        if (JPCInputStream.DEBUG) {
             System.out.println(")");
         }
     }

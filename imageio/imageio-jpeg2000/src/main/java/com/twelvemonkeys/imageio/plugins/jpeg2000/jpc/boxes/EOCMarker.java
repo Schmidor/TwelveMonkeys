@@ -28,7 +28,7 @@
 
 package com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.boxes;
 
-import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.JPCStream;
+import com.twelvemonkeys.imageio.plugins.jpeg2000.jpc.JPCInputStream;
 
 /**
  * End of codestream marker.
@@ -41,7 +41,7 @@ public class EOCMarker extends JPCBox {
 
     public EOCMarker(short type, int dataLength) {
         super(type, dataLength);
-        if (JPCStream.DEBUG) {
+        if (JPCInputStream.DEBUG) {
             System.out.println("EOCMarker");
         }
     }
