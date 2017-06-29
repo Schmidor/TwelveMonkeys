@@ -36,10 +36,12 @@ import com.twelvemonkeys.imageio.metadata.tiff.TIFFReader;
 import com.twelvemonkeys.imageio.stream.ByteArrayImageInputStream;
 import com.twelvemonkeys.imageio.util.ImageWriterAbstractTestCase;
 import com.twelvemonkeys.io.FastByteArrayOutputStream;
+import com.twelvemonkeys.io.NullOutputStream;
 import org.junit.Test;
 import org.w3c.dom.NodeList;
 
 import javax.imageio.*;
+import javax.imageio.event.IIOWriteProgressListener;
 import javax.imageio.metadata.IIOMetadata;
 import javax.imageio.metadata.IIOMetadataFormatImpl;
 import javax.imageio.metadata.IIOMetadataNode;
@@ -53,6 +55,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URL;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -60,6 +63,7 @@ import static com.twelvemonkeys.imageio.plugins.tiff.TIFFImageMetadataTest.creat
 import static com.twelvemonkeys.imageio.util.ImageReaderAbstractTest.assertRGBEquals;
 import static org.junit.Assert.*;
 import static org.junit.Assume.assumeNotNull;
+import static org.mockito.Mockito.*;
 
 /**
  * TIFFImageWriterTest
@@ -378,6 +382,50 @@ public class TIFFImageWriterTest extends ImageWriterAbstractTestCase {
                 assertEquals(images[i].getHeight(), image.getHeight());
 
                 assertRGBEquals("RGB differ", images[i].getRGB(0, 0), image.getRGB(0, 0), 5); // Allow room for JPEG compression
+            }
+        }
+    }
+
+    @Test
+    public void testWriteSequenceProgress() throws IOException {
+        BufferedImage[] images = new BufferedImage[] {
+                new BufferedImage(100, 100, BufferedImage.TYPE_INT_RGB),
+                new BufferedImage(110, 100, BufferedImage.TYPE_INT_RGB),
+                new BufferedImage(120, 100, BufferedImage.TYPE_INT_RGB)
+        };
+
+        ImageWriter writer = createImageWriter();
+        IIOWriteProgressListener progress = mock(IIOWriteProgressListener.class, "progress");
+        writer.addIIOWriteProgressListener(progress);
+
+        try (ImageOutputStream output = ImageIO.createImageOutputStream(new NullOutputStream())) {
+            writer.setOutput(output);
+
+            try {
+                writer.prepareWriteSequence(null);
+
+                for (int i = 0; i < images.length; i++) {
+                    reset(progress);
+
+                    ImageWriteParam param = writer.getDefaultWriteParam();
+
+                    if (i == images.length - 1) {
+                        // Make sure that the JPEG delegation outputs the correct indexes
+                        param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+                        param.setCompressionType("JPEG");
+                    }
+
+                    writer.writeToSequence(new IIOImage(images[i], null, null), param);
+
+                    verify(progress, times(1)).imageStarted(writer, i);
+                    verify(progress, atLeastOnce()).imageProgress(eq(writer), anyFloat());
+                    verify(progress, times(1)).imageComplete(writer);
+                }
+
+                writer.endWriteSequence();
+            }
+            catch (IOException e) {
+                fail(e.getMessage());
             }
         }
     }
@@ -873,5 +921,151 @@ public class TIFFImageWriterTest extends ImageWriterAbstractTestCase {
 
         byte[] bytes = output.toByteArray();
         assertArrayEquals(new byte[] {'I', 'I', 42, 0}, Arrays.copyOf(bytes, 4));
+    }
+
+    @Test
+    public void testRewrite() throws IOException {
+        ImageWriter writer = createImageWriter();
+        ImageReader reader = ImageIO.getImageReader(writer);
+
+        List<URL> testData = Arrays.asList(
+                getClassLoaderResource("/tiff/pixtiff/17-tiff-binary-ccitt-group3.tif"),
+                getClassLoaderResource("/tiff/pixtiff/36-tiff-8-bit-gray-jpeg.tif"),
+                getClassLoaderResource("/tiff/pixtiff/51-tiff-24-bit-color-jpeg.tif"),
+                getClassLoaderResource("/tiff/pixtiff/58-plexustiff-binary-ccitt-group4.tif"),
+                getClassLoaderResource("/tiff/balloons.tif"),
+                getClassLoaderResource("/tiff/ColorCheckerCalculator.tif"),
+                getClassLoaderResource("/tiff/quad-jpeg.tif"),
+                getClassLoaderResource("/tiff/quad-lzw.tif"),
+                getClassLoaderResource("/tiff/bali.tif"),
+                getClassLoaderResource("/tiff/lzw-colormap-iiobe.tif"),
+                // TODO: FixMe for ColorMap + ExtraSamples (custom ColorModel)
+//                getClassLoaderResource("/tiff/colormap-with-extrasamples.tif"),
+
+                getClassLoaderResource("/tiff/depth/flower-minisblack-02.tif"),
+                getClassLoaderResource("/tiff/depth/flower-minisblack-04.tif"),
+                getClassLoaderResource("/tiff/depth/flower-minisblack-06.tif"),
+                getClassLoaderResource("/tiff/depth/flower-minisblack-08.tif"),
+                getClassLoaderResource("/tiff/depth/flower-minisblack-10.tif"),
+                getClassLoaderResource("/tiff/depth/flower-minisblack-12.tif"),
+                getClassLoaderResource("/tiff/depth/flower-minisblack-14.tif"),
+                getClassLoaderResource("/tiff/depth/flower-minisblack-16.tif"),
+                getClassLoaderResource("/tiff/depth/flower-minisblack-24.tif"),
+                getClassLoaderResource("/tiff/depth/flower-minisblack-32.tif"),
+
+                getClassLoaderResource("/tiff/depth/flower-palette-02.tif"),
+                getClassLoaderResource("/tiff/depth/flower-palette-04.tif"),
+                getClassLoaderResource("/tiff/depth/flower-palette-08.tif"),
+                getClassLoaderResource("/tiff/depth/flower-palette-16.tif"),
+
+                getClassLoaderResource("/tiff/depth/flower-rgb-contig-08.tif"),
+                // TODO: FixMe for RGB > 8 bits / sample
+//                getClassLoaderResource("/tiff/depth/flower-rgb-contig-10.tif"),
+//                getClassLoaderResource("/tiff/depth/flower-rgb-contig-12.tif"),
+//                getClassLoaderResource("/tiff/depth/flower-rgb-contig-14.tif"),
+//                getClassLoaderResource("/tiff/depth/flower-rgb-contig-16.tif"),
+//                getClassLoaderResource("/tiff/depth/flower-rgb-contig-24.tif"),
+//                getClassLoaderResource("/tiff/depth/flower-rgb-contig-32.tif"),
+
+                getClassLoaderResource("/tiff/depth/flower-rgb-planar-08.tif"),
+                // TODO: FixMe for planar RGB > 8 bits / sample
+//                getClassLoaderResource("/tiff/depth/flower-rgb-planar-10.tif"),
+//                getClassLoaderResource("/tiff/depth/flower-rgb-planar-12.tif"),
+//                getClassLoaderResource("/tiff/depth/flower-rgb-planar-14.tif"),
+//                getClassLoaderResource("/tiff/depth/flower-rgb-planar-16.tif"),
+//                getClassLoaderResource("/tiff/depth/flower-rgb-planar-24.tif"),
+
+                getClassLoaderResource("/tiff/scan-mono-iccgray.tif"),
+                getClassLoaderResource("/tiff/old-style-jpeg-inconsistent-metadata.tif"),
+                getClassLoaderResource("/tiff/ccitt/group3_1d.tif"),
+                getClassLoaderResource("/tiff/ccitt/group3_2d.tif"),
+                getClassLoaderResource("/tiff/ccitt/group3_1d_fill.tif"),
+                getClassLoaderResource("/tiff/ccitt/group3_2d_fill.tif"),
+                getClassLoaderResource("/tiff/ccitt/group4.tif")
+        );
+
+        for (URL url : testData) {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+            try (ImageInputStream input = ImageIO.createImageInputStream(url);
+                 ImageOutputStream stream = ImageIO.createImageOutputStream(output)) {
+                reader.setInput(input);
+                writer.setOutput(stream);
+
+                List<ImageInfo> infos = new ArrayList<>(20);
+
+                writer.prepareWriteSequence(null);
+
+                for (int i = 0; i < reader.getNumImages(true); i++) {
+                    IIOImage image = reader.readAll(i, null);
+
+                    // If compression is Old JPEG, rewrite as JPEG
+                    // Normally, use the getAsTree method, but we don't care here if we are tied to our impl
+                    TIFFImageMetadata metadata = (TIFFImageMetadata) image.getMetadata();
+                    Directory ifd = metadata.getIFD();
+                    Entry compressionEntry = ifd.getEntryById(TIFF.TAG_COMPRESSION);
+
+                    int compression = compressionEntry != null ? ((Number) compressionEntry.getValue()).intValue() : TIFFBaseline.COMPRESSION_NONE;
+
+                    infos.add(new ImageInfo(image.getRenderedImage().getWidth(), image.getRenderedImage().getHeight(), compression));
+
+                    ImageWriteParam param = writer.getDefaultWriteParam();
+
+                    if (compression == TIFFExtension.COMPRESSION_OLD_JPEG) {
+                        param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT); // Override the copy from metadata
+                        param.setCompressionType("JPEG");
+                    }
+
+                    writer.writeToSequence(image, param);
+                }
+
+                writer.endWriteSequence();
+
+//                File tempFile = File.createTempFile("foo-", ".tif");
+//                System.err.println("open " + tempFile.getAbsolutePath());
+//                FileUtil.write(tempFile, output.toByteArray());
+
+                try (ImageInputStream inputAfter = new ByteArrayImageInputStream(output.toByteArray())) {
+                    reader.setInput(inputAfter);
+
+                    int numImages = reader.getNumImages(true);
+
+                    assertEquals("Number of pages differs from original", infos.size(), numImages);
+
+                    for (int i = 0; i < numImages; i++) {
+                        IIOImage after = reader.readAll(i, null);
+                        ImageInfo info = infos.get(i);
+
+                        TIFFImageMetadata afterMetadata = (TIFFImageMetadata) after.getMetadata();
+                        Directory afterIfd = afterMetadata.getIFD();
+                        Entry afterCompressionEntry = afterIfd.getEntryById(TIFF.TAG_COMPRESSION);
+
+                        if (info.compression == TIFFExtension.COMPRESSION_OLD_JPEG) {
+                            // Should rewrite this from old-style to new style
+                            assertEquals("Old JPEG compression not rewritten as JPEG", TIFFExtension.COMPRESSION_JPEG, ((Number) afterCompressionEntry.getValue()).intValue());
+                        }
+                        else {
+                            assertEquals("Compression differs from original", info.compression, ((Number) afterCompressionEntry.getValue()).intValue());
+                        }
+
+                        assertEquals("Image width differs from original", info.width, after.getRenderedImage().getWidth());
+                        assertEquals("Image height differs from original", info.height, after.getRenderedImage().getHeight());
+                    }
+                }
+            }
+        }
+    }
+
+    private class ImageInfo {
+        final int width;
+        final int height;
+
+        final int compression;
+
+        private ImageInfo(int width, int height, int compression) {
+            this.width = width;
+            this.height = height;
+            this.compression = compression;
+        }
     }
 }

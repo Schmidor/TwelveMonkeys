@@ -109,6 +109,7 @@ public class TIFFImageReaderTest extends ImageReaderAbstractTest<TIFFImageReader
                 new TestData(getClassLoaderResource("/tiff/ccitt_tolessrows.tif"), new Dimension(6, 6)), // CCITT, metadata claiming 6 rows, stream contains only 4
                 new TestData(getClassLoaderResource("/tiff/fivepages-scan-causingerrors.tif"), new Dimension(2480, 3518)), // B/W, CCITT T4
                 new TestData(getClassLoaderResource("/tiff/CCITTgetNextChangingElement.tif"), new Dimension(2402,195)),
+                new TestData(getClassLoaderResource("/tiff/ccitt-too-many-changes.tif"), new Dimension(24,153)),
                 // CIELab
                 new TestData(getClassLoaderResource("/tiff/ColorCheckerCalculator.tif"), new Dimension(798, 546)), // CIELab 8 bit/sample
                 // Gray
@@ -149,11 +150,18 @@ public class TIFFImageReaderTest extends ImageReaderAbstractTest<TIFFImageReader
                 new TestData(getClassLoaderResource("/tiff/depth/flower-separated-contig-16.tif"), new Dimension(73, 43)), // CMYK 16 bit/sample
                 // Separated (CMYK) Planar (PlanarConfiguration: 2)
                 new TestData(getClassLoaderResource("/tiff/depth/flower-separated-planar-08.tif"), new Dimension(73, 43)), // CMYK 8 bit/sample
-                new TestData(getClassLoaderResource("/tiff/depth/flower-separated-planar-16.tif"), new Dimension(73, 43))  // CMYK 16 bit/sample
+                new TestData(getClassLoaderResource("/tiff/depth/flower-separated-planar-16.tif"), new Dimension(73, 43)),  // CMYK 16 bit/sample
+                // JPEG Lossless
+                new TestData(getClassLoaderResource("/tiff/jpeg-lossless-8bit-gray.tif"), new Dimension(512, 512)),  // Lossless JPEG Gray, 8 bit/sample
+                new TestData(getClassLoaderResource("/tiff/jpeg-lossless-12bit-gray.tif"), new Dimension(512, 512)),  // Lossless JPEG Gray, 12 bit/sample
+                new TestData(getClassLoaderResource("/tiff/jpeg-lossless-16bit-gray.tif"), new Dimension(512, 512)),  // Lossless JPEG Gray, 16 bit/sample
+                new TestData(getClassLoaderResource("/tiff/jpeg-lossless-24bit-rgb"), new Dimension(512, 512)),  // Lossless JPEG RGB, 8 bit/sample
+                // Custom PIXTIFF ZIP (Compression: 50013)
+                new TestData(getClassLoaderResource("/tiff/pixtiff/40-8bit-gray-zip.tif"), new Dimension(801, 1313))  // ZIP Gray, 8 bit/sample
         );
     }
 
-    protected List<TestData> getUnsupportedTestData() {
+    private List<TestData> getUnsupportedTestData() {
         return Arrays.asList(
                 // RGB Interleaved (PlanarConfiguration: 1)
                 new TestData(getClassLoaderResource("/tiff/depth/flower-rgb-contig-02.tif"), new Dimension(73, 43)), // RGB 2 bit/sample
@@ -265,7 +273,7 @@ public class TIFFImageReaderTest extends ImageReaderAbstractTest<TIFFImageReader
 
             assertNotNull(image);
             assertEquals(testData.getDimension(0), new Dimension(image.getWidth(), image.getHeight()));
-            verify(warningListener, atLeastOnce()).warningOccurred(eq(reader), contains("metadata"));
+            verify(warningListener, atLeastOnce()).warningOccurred(eq(reader), contains("JPEG"));
         }
     }
 

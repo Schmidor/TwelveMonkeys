@@ -38,11 +38,13 @@ import com.twelvemonkeys.imageio.metadata.tiff.TIFFEntry;
 import com.twelvemonkeys.imageio.metadata.tiff.TIFFWriter;
 import com.twelvemonkeys.imageio.stream.SubImageOutputStream;
 import com.twelvemonkeys.imageio.util.IIOUtil;
+import com.twelvemonkeys.imageio.util.ProgressListenerBase;
 import com.twelvemonkeys.io.enc.EncoderStream;
 import com.twelvemonkeys.io.enc.PackBitsEncoder;
 import com.twelvemonkeys.lang.Validate;
 
 import javax.imageio.*;
+import javax.imageio.event.IIOWriteWarningListener;
 import javax.imageio.metadata.IIOInvalidTreeException;
 import javax.imageio.metadata.IIOMetadata;
 import javax.imageio.metadata.IIOMetadataFormatImpl;
@@ -69,19 +71,12 @@ import static com.twelvemonkeys.imageio.plugins.tiff.TIFFStreamMetadata.configur
  * @version $Id: TIFFImageWriter.java,v 1.0 18.09.13 12:46 haraldk Exp$
  */
 public final class TIFFImageWriter extends ImageWriterBase {
-    // Short term
-    // TODO: Support more of the ImageIO metadata (ie. compression from metadata, etc)
-
     // Long term
     // TODO: Support tiling
     // TODO: Support thumbnails
-    // TODO: Support CCITT Modified Huffman compression (2)
-    // TODO: Full "Baseline TIFF" support (pending CCITT compression 2)
-    // TODO: CCITT compressions T.4 and T.6
     // TODO: Support JPEG compression of CMYK data (pending JPEGImageWriter CMYK write support)
     // ----
-    // TODO: Support storing multiple images in one stream (multi-page TIFF)
-    // TODO: Support use-case: Transcode multi-layer PSD to multi-page TIFF with metadata
+    // TODO: Support use-case: Transcode multi-layer PSD to multi-page TIFF with metadata (hard, as Photoshop don't store layers as multi-page TIFF...)
     // TODO: Support use-case: Transcode multi-page TIFF to multiple single-page TIFFs with metadata
     // TODO: Support use-case: Losslessly transcode JPEG to JPEG-in-TIFF with (EXIF) metadata (and back)
 
@@ -99,18 +94,25 @@ public final class TIFFImageWriter extends ImageWriterBase {
     // Support JPEG compression (7) - might need extra input to allow multiple images with single DQT
     // Use sensible defaults for compression based on input? None is sensible... :-)
     // Support resolution, resolution unit and software tags from ImageIO metadata
+    // Support CCITT Modified Huffman compression (2)
+    // Full "Baseline TIFF" support (pending CCITT compression 2)
+    // CCITT compressions T.4 and T.6
+    // Support storing multiple images in one stream (multi-page TIFF)
+    // Support more of the ImageIO metadata (ie. compression from metadata, etc)
 
     private static final Rational STANDARD_DPI = new Rational(72);
 
     /**
      * Flag for active sequence writing
      */
-    private boolean isWritingSequence = false;
+    private boolean writingSequence = false;
+
+    private int sequenceIndex = 0;
 
     /**
      * Metadata writer for sequence writing
      */
-    private TIFFWriter sequenceTiffWriter = null;
+    private TIFFWriter sequenceTIFFWriter = null;
 
     /**
      * Position of last IFD Pointer on active sequence writing
@@ -137,12 +139,12 @@ public final class TIFFImageWriter extends ImageWriterBase {
         TIFFWriter tiffWriter = new TIFFWriter();
         tiffWriter.writeTIFFHeader(imageOutput);
 
-        writePage(image, param, tiffWriter, imageOutput.getStreamPosition());
+        writePage(0, image, param, tiffWriter, imageOutput.getStreamPosition());
 
         imageOutput.flush();
     }
 
-    private long writePage(IIOImage image, ImageWriteParam param, TIFFWriter tiffWriter, long lastIFDPointerOffset)
+    private long writePage(int imageIndex, IIOImage image, ImageWriteParam param, TIFFWriter tiffWriter, long lastIFDPointerOffset)
             throws IOException {
         RenderedImage renderedImage = image.getRenderedImage();
 
@@ -196,7 +198,7 @@ public final class TIFFImageWriter extends ImageWriterBase {
         int compression;
         if ((param == null || param.getCompressionMode() == TIFFImageWriteParam.MODE_COPY_FROM_METADATA)
                 && image.getMetadata() != null && metadata.getIFD().getEntryById(TIFF.TAG_COMPRESSION) != null) {
-            compression = (int) metadata.getIFD().getEntryById(TIFF.TAG_COMPRESSION).getValue();
+            compression = ((Number) metadata.getIFD().getEntryById(TIFF.TAG_COMPRESSION).getValue()).intValue();
         }
         else {
             compression = TIFFImageWriteParam.getCompressionType(param);
@@ -241,12 +243,13 @@ public final class TIFFImageWriter extends ImageWriterBase {
             default:
         }
 
-        // TODO: We might want to support CMYK in JPEG as well... Pending JPEG CMYK write support.
-        int photometric = compression == TIFFExtension.COMPRESSION_JPEG ? TIFFExtension.PHOTOMETRIC_YCBCR : getPhotometricInterpretation(colorModel);
+        int photometric = getPhotometricInterpretation(colorModel, compression);
         entries.put(TIFF.TAG_PHOTOMETRIC_INTERPRETATION, new TIFFEntry(TIFF.TAG_PHOTOMETRIC_INTERPRETATION, photometric));
 
         if (photometric == TIFFBaseline.PHOTOMETRIC_PALETTE && colorModel instanceof IndexColorModel) {
-            entries.put(TIFF.TAG_COLOR_MAP, new TIFFEntry(TIFF.TAG_COLOR_MAP, createColorMap((IndexColorModel) colorModel)));
+            // TODO: Fix consistency between sampleModel.getSampleSize() and colorModel.getPixelSize()...
+            // We should be able to support 1, 2, 4 and 8 bits per sample at least, and probably 3, 5, 6 and 7 too
+            entries.put(TIFF.TAG_COLOR_MAP, new TIFFEntry(TIFF.TAG_COLOR_MAP, createColorMap((IndexColorModel) colorModel, sampleModel.getSampleSize(0))));
             entries.put(TIFF.TAG_SAMPLES_PER_PIXEL, new TIFFEntry(TIFF.TAG_SAMPLES_PER_PIXEL, 1));
         }
         else {
@@ -353,6 +356,9 @@ public final class TIFFImageWriter extends ImageWriterBase {
             ImageWriter jpegWriter = writers.next();
             try {
                 jpegWriter.setOutput(new SubImageOutputStream(imageOutput));
+                ListenerDelegate listener = new ListenerDelegate(imageIndex);
+                jpegWriter.addIIOWriteProgressListener(listener);
+                jpegWriter.addIIOWriteWarningListener(listener);
                 jpegWriter.write(renderedImage);
             }
             finally {
@@ -361,7 +367,7 @@ public final class TIFFImageWriter extends ImageWriterBase {
         }
         else {
             // Write image data
-            writeImageData(createCompressorStream(renderedImage, param, entries), renderedImage, numBands, bandOffsets, bitOffsets);
+            writeImageData(createCompressorStream(renderedImage, param, entries), imageIndex, renderedImage, numBands, bandOffsets, bitOffsets);
         }
 
         long stripByteCount = imageOutput.getStreamPosition() - stripOffset;
@@ -451,9 +457,12 @@ public final class TIFFImageWriter extends ImageWriterBase {
         output.length: 12600399
          */
 
+        int samplesPerPixel = (Integer) entries.get(TIFF.TAG_SAMPLES_PER_PIXEL).getValue();
+        int bitPerSample = ((short[]) entries.get(TIFF.TAG_BITS_PER_SAMPLE).getValue())[0];
+
         // Use predictor by default for LZW and ZLib/Deflate
         // TODO: Unless explicitly disabled in TIFFImageWriteParam
-        int compression = (int) entries.get(TIFF.TAG_COMPRESSION).getValue();
+        int compression = ((Number) entries.get(TIFF.TAG_COMPRESSION).getValue()).intValue();
         OutputStream stream;
 
         switch (compression) {
@@ -489,16 +498,16 @@ public final class TIFFImageWriter extends ImageWriterBase {
                 stream = IIOUtil.createStreamAdapter(imageOutput);
                 stream = new DeflaterOutputStream(stream, new Deflater(deflateSetting), 1024);
                 if (entries.containsKey(TIFF.TAG_PREDICTOR) && entries.get(TIFF.TAG_PREDICTOR).getValue().equals(TIFFExtension.PREDICTOR_HORIZONTAL_DIFFERENCING)) {
-                    stream = new HorizontalDifferencingStream(stream, image.getTileWidth(), image.getTile(0, 0).getNumBands(), image.getColorModel().getComponentSize(0), imageOutput.getByteOrder());
+                    stream = new HorizontalDifferencingStream(stream, image.getTileWidth(), samplesPerPixel, bitPerSample, imageOutput.getByteOrder());
                 }
 
                 return new DataOutputStream(stream);
 
             case TIFFExtension.COMPRESSION_LZW:
                 stream = IIOUtil.createStreamAdapter(imageOutput);
-                stream = new EncoderStream(stream, new LZWEncoder((image.getTileWidth() * image.getTileHeight() * image.getColorModel().getPixelSize() + 7) / 8));
+                stream = new EncoderStream(stream, new LZWEncoder(((image.getTileWidth() * samplesPerPixel * bitPerSample + 7) / 8) * image.getTileHeight()));
                 if (entries.containsKey(TIFF.TAG_PREDICTOR) && entries.get(TIFF.TAG_PREDICTOR).getValue().equals(TIFFExtension.PREDICTOR_HORIZONTAL_DIFFERENCING)) {
-                    stream = new HorizontalDifferencingStream(stream, image.getTileWidth(), image.getTile(0, 0).getNumBands(), image.getColorModel().getComponentSize(0), imageOutput.getByteOrder());
+                    stream = new HorizontalDifferencingStream(stream, image.getTileWidth(), samplesPerPixel, bitPerSample, imageOutput.getByteOrder());
                 }
 
                 return new DataOutputStream(stream);
@@ -509,7 +518,8 @@ public final class TIFFImageWriter extends ImageWriterBase {
                 long option = 0L;
 
                 if (compression != TIFFBaseline.COMPRESSION_CCITT_MODIFIED_HUFFMAN_RLE) {
-                    option = (long) entries.get(compression == TIFFExtension.COMPRESSION_CCITT_T4 ? TIFF.TAG_GROUP3OPTIONS : TIFF.TAG_GROUP4OPTIONS).getValue();
+                    Entry optionsEntry = entries.get(compression == TIFFExtension.COMPRESSION_CCITT_T4 ? TIFF.TAG_GROUP3OPTIONS : TIFF.TAG_GROUP4OPTIONS);
+                    option = ((Number) optionsEntry.getValue()).longValue();
                 }
 
                 Entry fillOrderEntry = entries.get(TIFF.TAG_FILL_ORDER);
@@ -523,7 +533,7 @@ public final class TIFFImageWriter extends ImageWriterBase {
         throw new IllegalArgumentException(String.format("Unsupported TIFF compression: %d", compression));
     }
 
-    private int getPhotometricInterpretation(final ColorModel colorModel) {
+    private int getPhotometricInterpretation(final ColorModel colorModel, int compression) {
         if (colorModel.getPixelSize() == 1) {
             if (colorModel instanceof IndexColorModel) {
                 if (colorModel.getRGB(0) == 0xFFFFFFFF && colorModel.getRGB(1) == 0xFF000000) {
@@ -545,7 +555,7 @@ public final class TIFFImageWriter extends ImageWriterBase {
             case ColorSpace.TYPE_GRAY:
                 return TIFFBaseline.PHOTOMETRIC_BLACK_IS_ZERO;
             case ColorSpace.TYPE_RGB:
-                return TIFFBaseline.PHOTOMETRIC_RGB;
+                return compression == TIFFExtension.COMPRESSION_JPEG ? TIFFExtension.PHOTOMETRIC_YCBCR : TIFFBaseline.PHOTOMETRIC_RGB;
             case ColorSpace.TYPE_CMYK:
                 return TIFFExtension.PHOTOMETRIC_SEPARATED;
         }
@@ -553,12 +563,12 @@ public final class TIFFImageWriter extends ImageWriterBase {
         throw new IllegalArgumentException("Can't determine PhotometricInterpretation for color model: " + colorModel);
     }
 
-    private short[] createColorMap(final IndexColorModel colorModel) {
+    private short[] createColorMap(final IndexColorModel colorModel, final int sampleSize) {
         // TIFF6.pdf p. 23:
         // A TIFF color map is stored as type SHORT, count = 3 * (2^BitsPerSample)
         // "In a TIFF ColorMap, all the Red values come first, followed by the Green values, then the Blue values.
         // In the ColorMap, black is represented by 0,0,0 and white is represented by 65535, 65535, 65535."
-        short[] colorMap = new short[(int) (3 * Math.pow(2, colorModel.getPixelSize()))];
+        short[] colorMap = new short[(int) (3 * Math.pow(2, sampleSize))];
 
         for (int i = 0; i < colorModel.getMapSize(); i++) {
             int color = colorModel.getRGB(i);
@@ -584,14 +594,14 @@ public final class TIFFImageWriter extends ImageWriterBase {
         return shorts;
     }
 
-    private void writeImageData(DataOutput stream, RenderedImage renderedImage, int numComponents, int[] bandOffsets, int[] bitOffsets) throws IOException {
+    private void writeImageData(DataOutput stream, int imageIndex, RenderedImage renderedImage, int numComponents, int[] bandOffsets, int[] bitOffsets) throws IOException {
         // Store 3BYTE, 4BYTE as is (possibly need to re-arrange to RGB order)
         // Store INT_RGB as 3BYTE, INT_ARGB as 4BYTE?, INT_ABGR must be re-arranged
         // Store IndexColorModel as is
         // Store BYTE_GRAY as is
         // Store USHORT_GRAY as is
 
-        processImageStarted(0);
+        processImageStarted(imageIndex);
 
         final int minTileY = renderedImage.getMinTileY();
         final int maxYTiles = minTileY + renderedImage.getNumYTiles();
@@ -777,7 +787,7 @@ public final class TIFFImageWriter extends ImageWriterBase {
             }
 
             // TODO: Report better progress
-            processImageProgress((100f * yTile) / maxYTiles);
+            processImageProgress((100f * (yTile + 1)) / maxYTiles);
         }
 
         if (stream instanceof DataOutputStream) {
@@ -852,8 +862,17 @@ public final class TIFFImageWriter extends ImageWriterBase {
             }
         }
 
-        // TODO: Set values from imageType
-        entries.put(TIFF.TAG_PHOTOMETRIC_INTERPRETATION, new TIFFEntry(TIFF.TAG_PHOTOMETRIC_INTERPRETATION, TIFF.TYPE_SHORT, getPhotometricInterpretation(imageType.getColorModel())));
+        int compression;
+        if ((param == null || param.getCompressionMode() == TIFFImageWriteParam.MODE_COPY_FROM_METADATA)
+                && ifd != null && ifd.getEntryById(TIFF.TAG_COMPRESSION) != null) {
+            compression = ((Number) ifd.getEntryById(TIFF.TAG_COMPRESSION).getValue()).intValue();
+        }
+        else {
+            compression = TIFFImageWriteParam.getCompressionType(param);
+        }
+
+        int photometricInterpretation = getPhotometricInterpretation(imageType.getColorModel(), compression);
+        entries.put(TIFF.TAG_PHOTOMETRIC_INTERPRETATION, new TIFFEntry(TIFF.TAG_PHOTOMETRIC_INTERPRETATION, TIFF.TYPE_SHORT, photometricInterpretation));
 
         // TODO: Set values from param if != null + combined values...
 
@@ -884,21 +903,22 @@ public final class TIFFImageWriter extends ImageWriterBase {
 
     @Override
     public void prepareWriteSequence(IIOMetadata streamMetadata) throws IOException {
-        if (isWritingSequence) {
+        if (writingSequence) {
             throw new IllegalStateException("sequence writing has already been started!");
         }
 
-        // Ignore streamMetadata. ByteOrder is determined from OutputStream
         assertOutput();
-        isWritingSequence = true;
-        sequenceTiffWriter = new TIFFWriter();
-        sequenceTiffWriter.writeTIFFHeader(imageOutput);
+        configureStreamByteOrder(streamMetadata, imageOutput);
+
+        writingSequence = true;
+        sequenceTIFFWriter = new TIFFWriter();
+        sequenceTIFFWriter.writeTIFFHeader(imageOutput);
         sequenceLastIFDPos = imageOutput.getStreamPosition();
     }
 
     @Override
     public void writeToSequence(IIOImage image, ImageWriteParam param) throws IOException {
-        if (!isWritingSequence) {
+        if (!writingSequence) {
             throw new IllegalStateException("prepareWriteSequence() must be called before writeToSequence()!");
         }
 
@@ -906,17 +926,18 @@ public final class TIFFImageWriter extends ImageWriterBase {
             imageOutput.flushBefore(sequenceLastIFDPos);
         }
 
-        sequenceLastIFDPos = writePage(image, param, sequenceTiffWriter, sequenceLastIFDPos);
+        sequenceLastIFDPos = writePage(sequenceIndex++, image, param, sequenceTIFFWriter, sequenceLastIFDPos);
     }
 
     @Override
     public void endWriteSequence() throws IOException {
-        if (!isWritingSequence) {
+        if (!writingSequence) {
             throw new IllegalStateException("prepareWriteSequence() must be called before endWriteSequence()!");
         }
 
-        isWritingSequence = false;
-        sequenceTiffWriter = null;
+        writingSequence = false;
+        sequenceIndex = 0;
+        sequenceTIFFWriter = null;
         sequenceLastIFDPos = -1;
         imageOutput.flush();
     }
@@ -925,8 +946,9 @@ public final class TIFFImageWriter extends ImageWriterBase {
     protected void resetMembers() {
         super.resetMembers();
 
-        isWritingSequence = false;
-        sequenceTiffWriter = null;
+        writingSequence = false;
+        sequenceIndex = 0;
+        sequenceTIFFWriter = null;
         sequenceLastIFDPos = -1;
     }
 
@@ -1046,7 +1068,6 @@ public final class TIFFImageWriter extends ImageWriterBase {
 
         System.err.println("output.length: " + output.length());
 
-        // TODO: Support writing multipage TIFF
 //        ImageOutputStream stream = ImageIO.createImageOutputStream(output);
 //        try {
 //            writer.setOutput(stream);
@@ -1067,5 +1088,53 @@ public final class TIFFImageWriter extends ImageWriterBase {
         System.err.println("read: " + read);
 
         TIFFImageReader.showIt(read, output.getName());
+    }
+
+    private class ListenerDelegate extends ProgressListenerBase implements IIOWriteWarningListener {
+        private final int imageIndex;
+
+        public ListenerDelegate(final int imageIndex) {
+            this.imageIndex = imageIndex;
+        }
+
+        @Override
+        public void imageComplete(ImageWriter source) {
+            processImageComplete();
+        }
+
+        @Override
+        public void imageProgress(ImageWriter source, float percentageDone) {
+            processImageProgress(percentageDone);
+        }
+
+        @Override
+        public void imageStarted(ImageWriter source, int imageIndex) {
+            processImageStarted(this.imageIndex);
+        }
+
+        @Override
+        public void thumbnailComplete(ImageWriter source) {
+            processThumbnailComplete();
+        }
+
+        @Override
+        public void thumbnailProgress(ImageWriter source, float percentageDone) {
+            processThumbnailProgress(percentageDone);
+        }
+
+        @Override
+        public void thumbnailStarted(ImageWriter source, int imageIndex, int thumbnailIndex) {
+            processThumbnailStarted(this.imageIndex, thumbnailIndex);
+        }
+
+        @Override
+        public void writeAborted(ImageWriter source) {
+            processWriteAborted();
+        }
+
+        @Override
+        public void warningOccurred(ImageWriter source, int imageIndex, String warning) {
+            processWarningOccurred(this.imageIndex, warning);
+        }
     }
 }
