@@ -32,10 +32,7 @@ package com.twelvemonkeys.imageio.plugins.tiff;
 
 import com.twelvemonkeys.lang.Validate;
 
-import java.io.EOFException;
-import java.io.FilterInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.util.Arrays;
 
 /**
@@ -60,7 +57,7 @@ final class CCITTFaxDecoderStream extends FilterInputStream {
 
     // Need to take fill order into account (?) (use flip table?)
     private final int fillOrder;
-    private final int type;
+    private int type;
 
     private int decodedLength;
     private int decodedPos;
@@ -87,7 +84,7 @@ final class CCITTFaxDecoderStream extends FilterInputStream {
      * @param byteAligned enable byte alignment used in PDF files (EncodedByteAlign).
      */
     public CCITTFaxDecoderStream(final InputStream stream, final int columns, final int type, final int fillOrder,
-                                 final long options, final boolean byteAligned) {
+                                 final long options, final boolean byteAligned) throws IOException {
         super(Validate.notNull(stream, "stream"));
 
         this.columns = Validate.isTrue(columns > 0, columns, "width must be greater than 0");
@@ -130,6 +127,8 @@ final class CCITTFaxDecoderStream extends FilterInputStream {
                 throw new AssertionError();
         }
 
+        checkType();
+
         Validate.isTrue(!optionUncompressed, optionUncompressed,
                 "CCITT GROUP 3/4 OPTION UNCOMPRESSED is not supported");
     }
@@ -146,8 +145,30 @@ final class CCITTFaxDecoderStream extends FilterInputStream {
      * @param options CCITT T.4 or T.6 options.
      */
     public CCITTFaxDecoderStream(final InputStream stream, final int columns, final int type, final int fillOrder,
-                                 final long options) {
+                                 final long options) throws IOException {
         this(stream, columns, type, fillOrder, options, type == TIFFBaseline.COMPRESSION_CCITT_MODIFIED_HUFFMAN_RLE);
+    }
+
+    private void checkType() throws IOException {
+        if(type == TIFFExtension.COMPRESSION_CCITT_T4) {
+            byte[] streamData = new byte[20];
+            in.read(streamData);
+            in = new PushbackInputStream(in, streamData.length);
+            ((PushbackInputStream) in).unread(streamData);
+            if (streamData[0] != 0 || (streamData[1] >> 4 != 1 && streamData[1] != 1)) {
+                // leading EOL (0b000000000001) not found, search further and try RLE if not
+                // found
+                type = TIFFBaseline.COMPRESSION_CCITT_MODIFIED_HUFFMAN_RLE;
+                short b = (short) (((streamData[0] << 8) + streamData[1]) >> 4);
+                for (int i = 12; i < 160; i++) {
+                    b = (short) ((b << 1) + ((streamData[(i / 8)] >> (7 - (i % 8))) & 0x01));
+                    if ((b & 0xFFF) == 1) {
+                        type = TIFFExtension.COMPRESSION_CCITT_T4;
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     private void fetch() throws IOException {
@@ -384,7 +405,7 @@ final class CCITTFaxDecoderStream extends FilterInputStream {
 
             white = !white;
         }
-        
+
         if (index != columns) {
             throw new IOException("Sum of run-lengths does not equal scan line width: " + index + " > " + columns);
         }
