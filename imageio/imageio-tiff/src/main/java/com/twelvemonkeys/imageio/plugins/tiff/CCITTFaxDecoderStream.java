@@ -30,12 +30,11 @@
 
 package com.twelvemonkeys.imageio.plugins.tiff;
 
+import com.twelvemonkeys.imageio.stream.SubImageInputStream;
+import com.twelvemonkeys.lang.StringUtil;
 import com.twelvemonkeys.lang.Validate;
 
-import java.io.EOFException;
-import java.io.FilterInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.util.Arrays;
 
 /**
@@ -152,7 +151,7 @@ final class CCITTFaxDecoderStream extends FilterInputStream {
     static int findCompressionType(final int type, final InputStream in) throws IOException {
         // Discover possible incorrect type, revert to RLE
         if (type == TIFFExtension.COMPRESSION_CCITT_T4 && in.markSupported()) {
-            byte[] streamData = new byte[32];
+            byte[] streamData = new byte[100];
 
             try {
                 in.mark(streamData.length);
@@ -165,6 +164,10 @@ final class CCITTFaxDecoderStream extends FilterInputStream {
                     }
 
                     offset += read;
+                }
+                FileOutputStream fos = new FileOutputStream("C://temp//ccitt_bit.txt");
+                for (byte b: streamData) {
+                    fos.write((String.format("%8s", Integer.toBinaryString(b & 0xFF)).replace(' ', '0') + " ").getBytes());
                 }
             }
             finally {

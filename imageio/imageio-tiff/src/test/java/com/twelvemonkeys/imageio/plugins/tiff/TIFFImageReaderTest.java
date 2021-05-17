@@ -855,6 +855,27 @@ public class TIFFImageReaderTest extends ImageReaderAbstractTest<TIFFImageReader
     }
 
     @Test
+    public void testReadXY() throws IOException {
+        ImageReader reader = createReader();
+
+        TestData data = new TestData(getClassLoaderResource("/tiff/ccitt/20210505_151843_0000003292.tif"), new Dimension(73, 43));
+            reader.setInput(data.getInputStream());
+
+            for (int i = 0; i < data.getImageCount(); i++) {
+                try {
+                    reader.read(2);
+                    fail("Sample should be moved from unsupported to normal test case");
+                }
+                catch (IIOException e) {
+                    assertThat(e.getMessage().toLowerCase(), containsString("unsupported"));
+                }
+                catch (Exception e) {
+                    failBecause(String.format("Image %s index %s could not be read: %s", data.getInput(), i, e), e);
+                }
+            }
+    }
+
+    @Test
     public void testStreamMetadataNonNull() throws IOException {
         ImageReader reader = createReader();
 

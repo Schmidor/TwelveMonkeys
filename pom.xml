@@ -31,6 +31,7 @@
         <!--<module>sandbox</module>-->
         <module>contrib</module>
         <module>bom</module>
+        <module>debug-viewer</module>
     </modules>
 
     <developers>
@@ -172,7 +173,7 @@
                         <source>1.7</source>
                         <target>1.7</target>
                         <showDeprecation>false</showDeprecation>
-                        <debuglevel>source,lines</debuglevel>
+                        <debuglevel>source,lines,vars</debuglevel>
                         <compilerArguments>
                             <encoding>iso-8859-1</encoding>
                         </compilerArguments>
@@ -244,4 +245,16 @@
         </plugins>
     </reporting>
 
+	<distributionManagement>
+		<repository>
+			<id>JavaLib</id>
+			<name>Internal Releases</name>
+			<url>http://maven:8081/nexus/content/repositories/JavaLib</url>
+		</repository>
+		<snapshotRepository>
+			<id>Snapshots</id>
+			<name>Internal Releases</name>
+			<url>http://maven:8081/nexus/content/repositories/snapshots/</url>
+		</snapshotRepository>
+	</distributionManagement>
 </project>
